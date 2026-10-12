@@ -1,0 +1,78 @@
+name: Build Android APK & Web App
+
+on:
+  push:
+    branches: [ "main", "master" ]
+  pull_request:
+    branches: [ "main", "master" ]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    name: Build & Verify Sami Trading Challenge Tracker
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci || npm install
+
+      - name: TypeScript Lint & Typecheck
+        run: npm run lint
+
+      - name: Build Web Production Bundle
+        run: npm run build
+
+      - name: Package Web Distribution Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: sami-tracker-web-dist-v1.3.0
+          path: dist/
+          retention-days: 14
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          java-version: '17'
+          distribution: 'temurin'
+
+      - name: Check for Android Gradle project
+        id: check_android
+        run: |
+          if [ -d "android" ] || [ -f "build.gradle" ] || [ -f "build.gradle.kts" ]; then
+            echo "has_android=true" >> $GITHUB_OUTPUT
+          else
+            echo "has_android=false" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Build Android APK (if native Gradle exists)
+        if: steps.check_android.outputs.has_android == 'true'
+        run: |
+          if [ -d "android" ]; then
+            cd android
+            chmod +x gradlew || true
+            ./gradlew assembleRelease || ./gradlew assembleDebug
+          else
+            chmod +x gradlew || true
+            ./gradlew assembleRelease || ./gradlew assembleDebug
+          fi
+
+      - name: Upload Android APK
+        if: steps.check_android.outputs.has_android == 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: sami-tracker-apk-v1.3.0
+          path: |
+            **/build/outputs/apk/**/*.apk
+          retention-days: 30
